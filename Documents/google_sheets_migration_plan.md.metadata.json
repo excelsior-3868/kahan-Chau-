@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "A comprehensive plan to migrate the application backend from Supabase to Google Sheets using Google Apps Script as a middleware. This includes the required Google Sheet structure, the Apps Script code, and the Flutter app refactoring steps.",
+  "updatedAt": "2026-03-21T16:19:19.663271Z"
+}
