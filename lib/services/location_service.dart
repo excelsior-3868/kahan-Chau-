@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import '../core/constants/google_sheets_constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
 
 class LocationService {
+  final SupabaseClient _client = Supabase.instance.client;
   final AuthService _authService = AuthService();
   StreamSubscription<Position>? _positionStream;
 
@@ -13,12 +12,32 @@ class LocationService {
     final userId = _authService.currentUserId;
     if (userId == null) return;
 
-    // Google Sheets doesn't have a simple boolean update without a custom action 
-    // or reusing updateLocation. We'll just start/stop the local stream.
+    try {
+      await _client
+          .from('users')
+          .update({'is_sharing': isSharing}).eq('id', userId);
+    } catch (e) {
+      print('Set Sharing Status Error: $e');
+    }
+
     if (isSharing) {
       _startTracking();
     } else {
       _stopTracking();
+    }
+  }
+
+  Future<bool> getSharingStatus() async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return false;
+
+    try {
+      final row =
+          await _client.from('users').select('is_sharing').eq('id', userId).single();
+      return row['is_sharing'] as bool? ?? false;
+    } catch (e) {
+      print('Get Sharing Status Error: $e');
+      return false;
     }
   }
 
@@ -30,7 +49,7 @@ class LocationService {
         distanceFilter: 30, // Update every 30 meters
       ),
     ).listen((Position position) async {
-      await _updateLocationInSheets(position);
+      await _updateLocation(position);
     });
   }
 
@@ -39,44 +58,56 @@ class LocationService {
     _positionStream = null;
   }
 
-  Future<void> _updateLocationInSheets(Position position) async {
+  Future<void> _updateLocation(Position position) async {
     final userId = _authService.currentUserId;
     if (userId == null) return;
 
     try {
-      await http.post(
-        Uri.parse('${GoogleSheetsConstants.webAppUrl}?action=updateLocation'),
-        body: jsonEncode({
-          'user_id': userId,
+      // Also update the user's last known location
+      await _client.from('users').update({
+        'last_location': {
           'lat': position.latitude,
           'lng': position.longitude,
-        }),
-      );
+        },
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
     } catch (e) {
       print('Location Update Error: $e');
     }
   }
 
-  // Polling Stream to simulate real-time for Google Sheets
-  Stream<List<Map<String, dynamic>>> streamGroupLocations(String groupId) async* {
-    while (true) {
-      try {
-        final response = await http.get(
-          Uri.parse('${GoogleSheetsConstants.webAppUrl}?action=getGroupLocations&groupId=$groupId'),
-        );
+  Future<void> updateLocationForGroup(String groupId) async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
 
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> body = jsonDecode(response.body);
-          if (body['status'] == 'success') {
-            final List<dynamic> data = body['data'];
-            yield data.cast<Map<String, dynamic>>();
-          }
-        }
-      } catch (e) {
-        print('Stream Locations Error: $e');
-      }
-      await Future.delayed(const Duration(seconds: 10)); // Poll every 10 seconds
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
+
+      await _client.from('locations').upsert({
+        'user_id': userId,
+        'group_id': groupId,
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'status': 'live',
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      print('Update Location For Group Error: $e');
     }
+  }
+
+  /// Real-time stream of group member locations using Supabase Realtime
+  Stream<List<Map<String, dynamic>>> streamGroupLocations(
+      String groupId) {
+    return _client
+        .from('locations')
+        .stream(primaryKey: ['user_id', 'group_id'])
+        .eq('group_id', groupId);
   }
 
   void dispose() {

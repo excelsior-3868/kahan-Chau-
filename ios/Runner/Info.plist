@@ -8,10 +8,12 @@
 		<string>This app needs access to your location to share with your group members even in the background.</string>
 		<key>NSLocationAlwaysUsageDescription</key>
 		<string>This app needs access to your location to share with your group members.</string>
+		<key>NSFaceIDUsageDescription</key>
+		<string>This app uses FaceID to allow you to log in securely without typing your password.</string>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Family Locator</string>
+		<string>कहाँ छौ ??</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -19,7 +21,7 @@
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>family_locator</string>
+		<string>कहाँ छौ ??</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

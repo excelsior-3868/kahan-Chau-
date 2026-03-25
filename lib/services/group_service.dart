@@ -1,67 +1,126 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../core/constants/google_sheets_constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/group_model.dart';
 import 'auth_service.dart';
 
 class GroupService {
+  final SupabaseClient _client = Supabase.instance.client;
   final AuthService _authService = AuthService();
 
   Future<List<Group>> getUserGroups() async {
     final userId = _authService.currentUserId;
     if (userId == null) return [];
 
-    final response = await http.get(
-      Uri.parse('${GoogleSheetsConstants.webAppUrl}?action=getUserGroups&userId=$userId'),
-    );
+    try {
+      // Get group IDs the user belongs to
+      final memberRows = await _client
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', userId);
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> body = jsonDecode(response.body);
-      if (body['status'] == 'success') {
-        final List<dynamic> data = body['data'];
-        return data.map((json) => Group.fromJson(json)).toList();
-      }
+      if (memberRows.isEmpty) return [];
+
+      final groupIds =
+          memberRows.map((row) => row['group_id'] as String).toList();
+
+      // Fetch the group details
+      final groupRows =
+          await _client.from('groups').select().inFilter('id', groupIds);
+
+      return groupRows.map((json) => Group.fromJson(json)).toList();
+    } catch (e) {
+      print('Get Groups Error: $e');
+      return [];
     }
-    return [];
   }
 
   Future<Group?> createGroup(String name) async {
     final userId = _authService.currentUserId;
     if (userId == null) return null;
 
-    final response = await http.post(
-      Uri.parse('${GoogleSheetsConstants.webAppUrl}?action=createGroup'),
-      body: jsonEncode({
-        'name': name,
-        'owner_id': userId,
-      }),
-    );
+    try {
+      // Insert the group
+      final groupData = await _client
+          .from('groups')
+          .insert({
+            'name': name,
+            'owner_id': userId,
+          })
+          .select()
+          .single();
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> body = jsonDecode(response.body);
-      if (body['status'] == 'success') {
-        return Group.fromJson(body['data']);
-      }
+      // Add the owner as a member
+      await _client.from('group_members').insert({
+        'group_id': groupData['id'],
+        'user_id': userId,
+        'role': 'owner',
+      });
+
+      return Group.fromJson(groupData);
+    } catch (e) {
+      print('Create Group Error: $e');
+      return null;
     }
-    return null;
   }
 
   Future<bool> joinGroup(String inviteCode) async {
     final userId = _authService.currentUserId;
     if (userId == null) return false;
 
-    final response = await http.post(
-      Uri.parse('${GoogleSheetsConstants.webAppUrl}?action=joinGroup'),
-      body: jsonEncode({
-        'invite_code': inviteCode.toUpperCase(),
-        'user_id': userId,
-      }),
-    );
+    try {
+      final result = await _client.rpc('join_group_by_code', params: {
+        'code': inviteCode.trim(),
+      });
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> body = jsonDecode(response.body);
-      return body['status'] == 'success';
+      if (result is Map && result['status'] == 'ok') {
+        return true;
+      }
+
+      print('Join Group Response: $result');
+      return false;
+    } catch (e) {
+      print('Join Group Error: $e');
+      return false;
     }
-    return false;
+  }
+
+  /// Fetch members of a group with their user profile info
+  Future<List<Map<String, dynamic>>> getGroupMembers(String groupId) async {
+    try {
+      // Get member rows with user details
+      final memberRows = await _client
+          .from('group_members')
+          .select('user_id, role, joined_at')
+          .eq('group_id', groupId);
+
+      if (memberRows.isEmpty) return [];
+
+      final userIds =
+          memberRows.map((row) => row['user_id'] as String).toList();
+
+      // Fetch user profiles
+      final userRows =
+          await _client.from('users').select().inFilter('id', userIds);
+
+      // Merge member data with user profiles
+      final members = <Map<String, dynamic>>[];
+      for (final member in memberRows) {
+        final user = userRows.firstWhere(
+          (u) => u['id'] == member['user_id'],
+          orElse: () => <String, dynamic>{},
+        );
+        members.add({
+          ...member,
+          'display_name': user['display_name'] ?? user['email'] ?? 'Unknown',
+          'email': user['email'] ?? '',
+          'is_sharing': user['is_sharing'] ?? false,
+          'last_location': user['last_location'],
+        });
+      }
+
+      return members;
+    } catch (e) {
+      print('Get Group Members Error: $e');
+      return [];
+    }
   }
 }

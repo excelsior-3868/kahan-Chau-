@@ -1,27 +1,33 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import '../../models/group_model.dart';
 import '../../services/location_service.dart';
+import '../../services/group_service.dart';
 
 class MapScreen extends StatefulWidget {
   final Group? selectedGroup;
+  final Map<String, dynamic>? focusLocation; // e.g. {'lat': 27.7, 'lng': 85.3, 'name': 'John'}
 
-  const MapScreen({super.key, this.selectedGroup});
+  const MapScreen({super.key, this.selectedGroup, this.focusLocation});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
 class _MapScreenState extends State<MapScreen> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   Position? _currentPosition;
   bool _isLoadingLocation = true;
+  bool _mapReady = false;
 
   final LocationService _locationService = LocationService();
+  final GroupService _groupService = GroupService();
   StreamSubscription? _locationSubscription;
-  final Set<Marker> _markers = {};
+  final List<Marker> _markers = [];
+  List<Map<String, dynamic>> _groupMembers = [];
 
   @override
   void initState() {
@@ -29,6 +35,7 @@ class _MapScreenState extends State<MapScreen> {
     _determinePosition();
     if (widget.selectedGroup != null) {
       _listenToGroupLocations();
+      _fetchGroupMembers();
     }
   }
 
@@ -39,11 +46,30 @@ class _MapScreenState extends State<MapScreen> {
       _locationSubscription?.cancel();
       if (widget.selectedGroup != null) {
         _listenToGroupLocations();
+        _fetchGroupMembers();
       } else {
         setState(() {
           _markers.clear();
+          _groupMembers.clear();
         });
       }
+    }
+
+    // Move map if a new focus location is provided
+    if (widget.focusLocation != oldWidget.focusLocation && widget.focusLocation != null) {
+      final lat = widget.focusLocation!['lat'] as double;
+      final lng = widget.focusLocation!['lng'] as double;
+      _moveToPosition(lat, lng);
+    }
+  }
+
+  Future<void> _fetchGroupMembers() async {
+    if (widget.selectedGroup == null) return;
+    final members = await _groupService.getGroupMembers(widget.selectedGroup!.id);
+    if (mounted) {
+      setState(() {
+        _groupMembers = members;
+      });
     }
   }
 
@@ -51,30 +77,76 @@ class _MapScreenState extends State<MapScreen> {
     _locationSubscription = _locationService
         .streamGroupLocations(widget.selectedGroup!.id)
         .listen((locations) {
-          final newMarkers = <Marker>{};
-          for (var loc in locations) {
-            newMarkers.add(
-              Marker(
-                markerId: MarkerId(loc['user_id']),
-                position: LatLng(loc['lat'], loc['lng']),
-                infoWindow: InfoWindow(
-                  title: 'Member',
-                  snippet:
-                      'Last updated: ${DateTime.parse(loc['timestamp']).toLocal()}',
-                ),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueBlue,
-                ),
+      final newMarkers = <Marker>[];
+      for (var loc in locations) {
+        final userId = loc['user_id'] as String?;
+        final lat = (loc['lat'] as num?)?.toDouble();
+        final lng = (loc['lng'] as num?)?.toDouble();
+        if (lat != null && lng != null && userId != null) {
+          final member = _groupMembers.firstWhere(
+            (m) => m['user_id'] == userId,
+            orElse: () => <String, dynamic>{},
+          );
+          final displayName = member['display_name'] as String? ?? 'User';
+          final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+
+          newMarkers.add(
+            Marker(
+              point: LatLng(lat, lng),
+              width: 140,
+              height: 70,
+              alignment: Alignment.topCenter,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: 10,
+                          backgroundColor: Colors.blue.shade100,
+                          child: Text(
+                            initial,
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.location_pin,
+                    color: Colors.blue,
+                    size: 36,
+                  ),
+                ],
               ),
-            );
-          }
-          if (mounted) {
-            setState(() {
-              _markers.clear();
-              _markers.addAll(newMarkers);
-            });
-          }
+            ),
+          );
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _markers.clear();
+          _markers.addAll(newMarkers);
         });
+      }
+    });
   }
 
   Future<void> _determinePosition() async {
@@ -130,14 +202,7 @@ class _MapScreenState extends State<MapScreen> {
           _currentPosition = position;
           _isLoadingLocation = false;
         });
-        _mapController?.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: LatLng(position.latitude, position.longitude),
-              zoom: 15.0,
-            ),
-          ),
-        );
+        _moveToPosition(position.latitude, position.longitude);
       }
     } catch (e) {
       if (mounted) {
@@ -147,6 +212,23 @@ class _MapScreenState extends State<MapScreen> {
         );
         setState(() => _isLoadingLocation = false);
       }
+    }
+  }
+
+  void _moveToPosition(double lat, double lng) {
+    if (_mapReady) {
+      _mapController.move(LatLng(lat, lng), 15.0);
+    }
+  }
+
+  void _onMapReady() {
+    _mapReady = true;
+    if (widget.focusLocation != null) {
+      final lat = widget.focusLocation!['lat'] as double;
+      final lng = widget.focusLocation!['lng'] as double;
+      _moveToPosition(lat, lng);
+    } else if (_currentPosition != null) {
+      _moveToPosition(_currentPosition!.latitude, _currentPosition!.longitude);
     }
   }
 
@@ -171,37 +253,180 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
-    return Column(
+    final initialCenter = _currentPosition != null
+        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+        : const LatLng(27.7172, 85.3240); // Kathmandu as default
+
+    return Stack(
       children: [
-        if (widget.selectedGroup != null)
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: Colors.blue.shade50,
-            width: double.infinity,
-            child: Text(
-              'Viewing Group: ${widget.selectedGroup!.name}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: initialCenter,
+            initialZoom: 15.0,
+            onMapReady: _onMapReady,
           ),
-        Expanded(
-          child: GoogleMap(
-            initialCameraPosition: _currentPosition != null
-                ? CameraPosition(
-                    target: LatLng(
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.family_locator',
+            ),
+            // Current user location marker
+            if (_currentPosition != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: LatLng(
                       _currentPosition!.latitude,
                       _currentPosition!.longitude,
                     ),
-                    zoom: 15.0,
-                  )
-                : const CameraPosition(target: LatLng(0, 0), zoom: 2.0),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: false,
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-            },
-            markers: _markers,
+                    width: 140,
+                    height: 70,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 10,
+                                backgroundColor: Colors.red.shade100,
+                                child: const Icon(Icons.person, size: 12, color: Colors.red),
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'You',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.location_pin,
+                          color: Colors.red,
+                          size: 36,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            // Group member markers
+            if (_markers.isNotEmpty) MarkerLayer(markers: _markers),
+          ],
+        ),
+        // Group Display Name & Members Dropdown
+        if (widget.selectedGroup != null)
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              child: Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Theme(
+                  // Remove divider lines from ExpansionTile
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    leading: const Icon(Icons.group, color: Colors.blue, size: 24),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.selectedGroup!.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Icon(Icons.person, size: 16, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_groupMembers.length}',
+                          style: const TextStyle(color: Colors.grey, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  children: [
+                    if (_groupMembers.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No members found'),
+                      )
+                    else
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 250),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: _groupMembers.length,
+                          itemBuilder: (context, index) {
+                            final member = _groupMembers[index];
+                            final displayName = member['display_name'] as String? ?? 'Unknown';
+                            final lastLocation = member['last_location'];
+                            final hasLocation = lastLocation != null &&
+                                lastLocation is Map &&
+                                lastLocation['lat'] != null &&
+                                lastLocation['lng'] != null;
+
+                            return ListTile(
+                              leading: const Icon(Icons.person, color: Colors.grey),
+                              title: Text(displayName),
+                              subtitle: Text(
+                                hasLocation ? 'Location Available' : 'No Location',
+                                style: TextStyle(
+                                  color: hasLocation ? Colors.green : Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: Icon(
+                                  Icons.my_location,
+                                  color: hasLocation ? Colors.blue : Colors.grey.shade300,
+                                ),
+                                onPressed: hasLocation
+                                    ? () {
+                                        final lat = (lastLocation['lat'] as num).toDouble();
+                                        final lng = (lastLocation['lng'] as num).toDouble();
+                                        _moveToPosition(lat, lng);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Locating $displayName...'),
+                                            duration: const Duration(seconds: 1),
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                              ),
+                              onTap: hasLocation
+                                  ? () {
+                                      final lat = (lastLocation['lat'] as num).toDouble();
+                                      final lng = (lastLocation['lng'] as num).toDouble();
+                                      _moveToPosition(lat, lng);
+                                    }
+                                  : null,
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ],

@@ -46,43 +46,61 @@ alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
 alter table public.locations enable row level security;
 
--- Setup RLS Policies (Basic examples, need refinement for production)
--- Users can read their own data and data of users in their groups
+-- ============================================================
+-- Helper function to avoid infinite recursion in RLS policies
+-- Uses SECURITY DEFINER to bypass RLS when looking up memberships
+-- ============================================================
+create or replace function public.get_my_group_ids()
+returns setof uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select group_id from public.group_members where user_id = auth.uid();
+$$;
+
+-- ============================================================
+-- RLS Policies
+-- ============================================================
+
+-- USERS
 create policy "Users can view members of their groups" on public.users
   for select using (
     id = auth.uid() or
-    id in (
-      select user_id from public.group_members where group_id in (
-        select group_id from public.group_members where user_id = auth.uid()
-      )
-    )
+    id in (select user_id from public.group_members where group_id in (select public.get_my_group_ids()))
   );
 
 create policy "Users can update their own data" on public.users
   for update using (id = auth.uid());
 
--- Groups can be viewed by their members
-create policy "Members can view their groups" on public.groups
+create policy "Users can insert their own profile" on public.users
+  for insert with check (id = auth.uid());
+
+-- GROUPS
+create policy "Users can view their own or member groups" on public.groups
   for select using (
-    id in (select group_id from public.group_members where user_id = auth.uid())
+    owner_id = auth.uid() or
+    id in (select public.get_my_group_ids())
   );
 
 create policy "Users can create groups" on public.groups
   for insert with check (owner_id = auth.uid());
 
--- Group Members can view other members in their groups
+-- GROUP MEMBERS
 create policy "Members can view group members" on public.group_members
   for select using (
-    group_id in (select group_id from public.group_members where user_id = auth.uid())
+    user_id = auth.uid() or
+    group_id in (select public.get_my_group_ids())
   );
 
 create policy "Users can join groups" on public.group_members
   for insert with check (user_id = auth.uid());
 
--- Locations can be viewed by group members
+-- LOCATIONS
 create policy "Members can view locations in their groups" on public.locations
   for select using (
-    group_id in (select group_id from public.group_members where user_id = auth.uid())
+    group_id in (select public.get_my_group_ids())
   );
 
 create policy "Users can insert/update their own locations" on public.locations
