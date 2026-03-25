@@ -34,6 +34,63 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkBiometricStatus();
   }
 
+  Future<void> _checkInitialSharingStatus() async {
+    final isSharing = await _locationService.getSharingStatus();
+    if (mounted) {
+      setState(() => _isSharingLocation = isSharing);
+      
+      if (isSharing) {
+        _locationService.setSharingStatus(true);
+      } else {
+        // Prompt user to enable location sharing if it's OFF
+        Future.delayed(const Duration(seconds: 1), () => _showLocationPrompt());
+      }
+    }
+  }
+
+  void _showLocationPrompt() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Center(
+          child: Text(
+            'Enable Location Sharing',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Divider(),
+            SizedBox(height: 16),
+            Text(
+              'To share your location with your groups, please enable location sharing in settings.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _toggleSharing(true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0050A4),
+              shape: const StadiumBorder(),
+            ),
+            child: const Text('Enable Now', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
   Future<void> _checkBiometricStatus() async {
     final isEnabled = await BiometricService().isBiometricEnabled();
     if (mounted) setState(() => _isBiometricEnabled = isEnabled);
@@ -53,117 +110,23 @@ class _HomeScreenState extends State<HomeScreen> {
         _showStyledDialog('Disabled', 'Biometric login has been disabled.');
       }
       return;
+    } else {
+      final token = _authService.currentRefreshToken;
+      if (token == null) {
+        _showStyledDialog('Error', 'Session not found. Please log in with Google again before enabling biometrics.');
+        return;
+      }
+      
+      final authenticated = await bioService.authenticate();
+      if (authenticated) {
+        await bioService.saveToken(token);
+        await bioService.setBiometricEnabled(true);
+        setState(() => _isBiometricEnabled = true);
+        _showStyledDialog('Enabled', 'Biometric login enabled successfully!');
+      } else {
+        setState(() => _isBiometricEnabled = false);
+      }
     }
-
-    // Attempt to enable: we need the user's password to store it securely!
-    final passwordController = TextEditingController();
-    bool isSavingLocal = false;
-    bool obscurePasswordLocal = true;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          title: const Center(
-            child: Text(
-              'Enable Biometrics',
-              style: TextStyle(
-                  color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Divider(),
-              const SizedBox(height: 16),
-              const Text(
-                  'Please verify your password to securely save it for biometric login.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.black87)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: obscurePasswordLocal,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      obscurePasswordLocal
-                          ? Icons.visibility_off
-                          : Icons.visibility,
-                    ),
-                    onPressed: () => setStateDialog(
-                        () => obscurePasswordLocal = !obscurePasswordLocal),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child:
-                  const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: isSavingLocal
-                  ? null
-                  : () async {
-                      final pwd = passwordController.text;
-                      if (pwd.isEmpty) return;
-                      setStateDialog(() => isSavingLocal = true);
-
-                      final email = _authService.currentUserEmail;
-                      if (email == null) {
-                        Navigator.pop(context);
-                        return;
-                      }
-
-                      final error =
-                          await _authService.signIn(email: email, password: pwd);
-                      if (mounted) setStateDialog(() => isSavingLocal = false);
-
-                      if (error == null) {
-                        await bioService.saveCredentials(email, pwd);
-                        await bioService.setBiometricEnabled(true);
-                        if (mounted) {
-                          setState(() => _isBiometricEnabled = true);
-                          Navigator.pop(context);
-                          _showStyledDialog('Success',
-                              'Biometric login enabled successfully!');
-                        }
-                      } else {
-                        if (mounted) {
-                          _showStyledDialog(
-                              'Error', 'Incorrect password. Please try again.');
-                        }
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0056A4),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-              child: isSavingLocal
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Enable', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-    );
   }
 
   Future<void> _loadGroups() async {
@@ -178,19 +141,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _selectedGroup = groups.first;
         }
       });
-    }
-  }
-
-  Future<void> _checkInitialSharingStatus() async {
-    final isSharing = await _locationService.getSharingStatus();
-    if (mounted) {
-      setState(() {
-        _isSharingLocation = isSharing;
-      });
-      // Start tracking if it was already enabled on the server
-      if (isSharing) {
-        _locationService.setSharingStatus(true);
-      }
     }
   }
 
@@ -249,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0056A4),
+              backgroundColor: const Color(0xFF0050A4),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
@@ -319,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0056A4),
+              backgroundColor: const Color(0xFF0050A4),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
@@ -396,9 +346,9 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListTile(
             leading: CircleAvatar(
               backgroundColor:
-                  isSelected ? Colors.blue : Colors.blue.shade100,
+                  isSelected ? const Color(0xFF0050A4) : const Color(0xFF0050A4).withOpacity(0.1),
               child: Icon(Icons.group,
-                  color: isSelected ? Colors.white : Colors.blue),
+                  color: isSelected ? Colors.white : const Color(0xFF0050A4)),
             ),
             title: Text(
               group.name,
@@ -408,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
             trailing: Radio<String>(
               value: group.id,
               groupValue: _selectedGroup?.id,
-              activeColor: Colors.blue,
+              activeColor: const Color(0xFF0050A4),
               onChanged: (String? value) {
                 setState(() {
                   _selectedGroup = group;
@@ -443,152 +393,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _showChangePasswordDialog() async {
-    final oldPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isSaving = false;
-    bool obscureOld = true;
-    bool obscureNew = true;
-    bool obscureConfirm = true;
-
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          title: const Center(
-            child: Text(
-              'Change Password',
-              style: TextStyle(
-                  color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-          content: Container(
-            width: MediaQuery.of(context).size.width,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: oldPasswordController,
-                    obscureText: obscureOld,
-                    decoration: InputDecoration(
-                      labelText: 'Old Password',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureOld = !obscureOld),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: obscureNew,
-                    decoration: InputDecoration(
-                      labelText: 'New Password',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock_reset),
-                      suffixIcon: IconButton(
-                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: confirmPasswordController,
-                    obscureText: obscureConfirm,
-                    decoration: InputDecoration(
-                      labelText: 'Confirm New Password',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock_clock_outlined),
-                      suffixIcon: IconButton(
-                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
-            ),
-            ElevatedButton(
-              onPressed: isSaving ? null : () async {
-                final oldPwd = oldPasswordController.text;
-                final newPwd = newPasswordController.text;
-                final confirmPwd = confirmPasswordController.text;
-
-                if (oldPwd.isEmpty || newPwd.isEmpty || confirmPwd.isEmpty) {
-                  _showStyledDialog('Error', 'Please fill in all fields.');
-                  return;
-                }
-                if (newPwd.length < 6) {
-                  _showStyledDialog('Error', 'New password must be at least 6 characters.');
-                  return;
-                }
-                if (newPwd != confirmPwd) {
-                  _showStyledDialog('Error', 'Passwords do not match.');
-                  return;
-                }
-
-                setStateDialog(() => isSaving = true);
-                
-                final email = AuthService().currentUserEmail;
-                if (email == null) {
-                  setStateDialog(() => isSaving = false);
-                  return;
-                }
-
-                final reAuthError = await AuthService().signIn(email: email, password: oldPwd);
-                if (reAuthError != null) {
-                  if (mounted) {
-                    setStateDialog(() => isSaving = false);
-                    _showStyledDialog('Error', 'Incorrect old password.');
-                  }
-                  return;
-                }
-
-                final updateError = await AuthService().updatePassword(newPwd);
-                
-                if (mounted) {
-                  setStateDialog(() => isSaving = false);
-                  if (updateError == null) {
-                    if (_isBiometricEnabled) {
-                      await BiometricService().saveCredentials(email, newPwd);
-                    }
-                    Navigator.pop(context);
-                    _showStyledDialog('Success', 'Password updated successfully!');
-                  } else {
-                    _showStyledDialog('Error', updateError);
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0056A4),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-              child: isSaving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Update', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-    );
-  }
 
   Future<void> _showEditDisplayNameDialog() async {
     final controller = TextEditingController(text: _authService.currentUserName ?? '');
@@ -648,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0056A4),
+                backgroundColor: const Color(0xFF0050A4),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
@@ -679,7 +483,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onChanged: _toggleSharing,
           secondary: Icon(
             _isSharingLocation ? Icons.location_on : Icons.location_off,
-            color: _isSharingLocation ? Colors.blue : Colors.grey,
+            color: _isSharingLocation ? const Color(0xFF0050A4) : Colors.grey,
           ),
         ),
         SwitchListTile(
@@ -689,7 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onChanged: _toggleBiometric,
           secondary: Icon(
             Icons.fingerprint,
-            color: _isBiometricEnabled ? Colors.blue : Colors.grey,
+            color: _isBiometricEnabled ? const Color(0xFF0050A4) : Colors.grey,
           ),
         ),
         const Divider(),
@@ -705,14 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
           title: const Text('Email'),
           subtitle: Text(_authService.currentUserEmail ?? 'Unknown'),
         ),
-        ListTile(
-          leading: const Icon(Icons.lock_outline),
-          title: const Text('Change Password'),
-          subtitle: const Text('Update your account security.'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _showChangePasswordDialog,
-        ),
-        const Divider(),
+         const Divider(),
         ListTile(
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('Logout', style: TextStyle(color: Colors.red)),
@@ -872,7 +669,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0056A4),
+                backgroundColor: const Color(0xFF0050A4),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               ),
@@ -917,7 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0056A4),
+                  backgroundColor: const Color(0xFF0050A4),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),

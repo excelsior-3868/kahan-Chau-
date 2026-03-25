@@ -53,7 +53,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       case 'owner':
         return Colors.amber;
       case 'admin':
-        return Colors.blue;
+        return const Color(0xFF0050A4);
       default:
         return Colors.grey;
     }
@@ -97,7 +97,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         children: [
                           const CircleAvatar(
                             radius: 32,
-                            backgroundColor: Colors.blue,
+                            backgroundColor: const Color(0xFF0050A4),
                             child: Icon(Icons.group, size: 36, color: Colors.white),
                           ),
                           const SizedBox(height: 12),
@@ -133,7 +133,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                                     ),
                                   );
                                 },
-                                child: const Icon(Icons.copy, size: 16, color: Colors.blue),
+                                child: const Icon(Icons.copy, size: 16, color: const Color(0xFF0050A4)),
                               ),
                             ],
                           ),
@@ -156,7 +156,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                           const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Row(
                         children: [
-                          const Icon(Icons.people, size: 20, color: Colors.blue),
+                          const Icon(Icons.people, size: 20, color: const Color(0xFF0050A4)),
                           const SizedBox(width: 8),
                           Text(
                             'Members',
@@ -265,7 +265,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                                 trailing: IconButton(
                                   icon: Icon(
                                     Icons.my_location,
-                                    color: hasLocation ? Colors.blue : Colors.grey.shade300,
+                                    color: hasLocation ? const Color(0xFF0050A4) : Colors.grey.shade300,
                                   ),
                                   tooltip: hasLocation
                                       ? 'Locate on map'

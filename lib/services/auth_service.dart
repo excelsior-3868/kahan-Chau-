@@ -18,6 +18,10 @@ class AuthService {
       _client.auth.currentUser?.userMetadata?['display_name'] as String? ??
       _client.auth.currentUser?.userMetadata?['full_name'] as String?;
 
+  String? get currentUserProfileImage => 
+      _client.auth.currentUser?.userMetadata?['avatar_url'] as String? ??
+      _client.auth.currentUser?.userMetadata?['profile_image'] as String?;
+
   bool get isAuthenticated => _client.auth.currentSession != null;
 
   /// The Web Client ID from Google Cloud Console (required for Android ID Tokens)
@@ -211,8 +215,30 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    final googleSignIn = GoogleSignIn();
+    try {
+      await googleSignIn.signOut();
+    } catch (_) {}
     await _client.auth.signOut();
   }
+
+  /// Sign in using a stored refresh token (for biometric re-auth)
+  Future<String?> signInWithToken(String refreshToken) async {
+    try {
+      final response = await _client.auth.refreshSession(refreshToken);
+      if (response.session != null) {
+        return null;
+      }
+      return 'Session expired. Please log in with Google.';
+    } on AuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      return 'Unexpected error: $e';
+    }
+  }
+
+  /// Get current session refresh token
+  String? get currentRefreshToken => _client.auth.currentSession?.refreshToken;
 
   Future<String?> updateDisplayName(String name) async {
     try {

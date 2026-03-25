@@ -6,8 +6,7 @@ class BiometricService {
   final LocalAuthentication _auth = LocalAuthentication();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   
-  static const String _keyEmail = 'biometric_email';
-  static const String _keyPassword = 'biometric_password';
+  static const String _keyToken = 'biometric_token_v2'; // New key for token
   static const String _keyEnabled = 'biometric_enabled';
 
   Future<bool> isBiometricAvailable() async {
@@ -25,8 +24,6 @@ class BiometricService {
     try {
       return await _auth.authenticate(
         localizedReason: 'Please authenticate to log in',
-        persistAcrossBackgrounding: true,
-        biometricOnly: false,
       );
     } catch (e) {
       return false;
@@ -42,27 +39,19 @@ class BiometricService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnabled, value);
     if (!value) {
-      await clearCredentials();
+      await clearToken();
     }
   }
 
-  Future<void> saveCredentials(String email, String password) async {
-    await _secureStorage.write(key: _keyEmail, value: email);
-    await _secureStorage.write(key: _keyPassword, value: password);
+  Future<void> saveToken(String refreshToken) async {
+    await _secureStorage.write(key: _keyToken, value: refreshToken);
   }
 
-  Future<Map<String, String>?> getCredentials() async {
-    final email = await _secureStorage.read(key: _keyEmail);
-    final password = await _secureStorage.read(key: _keyPassword);
-    
-    if (email != null && password != null) {
-      return {'email': email, 'password': password};
-    }
-    return null;
+  Future<String?> getToken() async {
+    return await _secureStorage.read(key: _keyToken);
   }
 
-  Future<void> clearCredentials() async {
-    await _secureStorage.delete(key: _keyEmail);
-    await _secureStorage.delete(key: _keyPassword);
+  Future<void> clearToken() async {
+    await _secureStorage.delete(key: _keyToken);
   }
 }

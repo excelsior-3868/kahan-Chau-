@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../models/group_model.dart';
 import '../../services/location_service.dart';
 import '../../services/group_service.dart';
+import '../../services/auth_service.dart';
 
 class MapScreen extends StatefulWidget {
   final Group? selectedGroup;
@@ -25,6 +26,7 @@ class _MapScreenState extends State<MapScreen> {
 
   final LocationService _locationService = LocationService();
   final GroupService _groupService = GroupService();
+  final AuthService _authService = AuthService();
   StreamSubscription? _locationSubscription;
   final List<Marker> _markers = [];
   List<Map<String, dynamic>> _groupMembers = [];
@@ -78,51 +80,63 @@ class _MapScreenState extends State<MapScreen> {
         .streamGroupLocations(widget.selectedGroup!.id)
         .listen((locations) {
       final newMarkers = <Marker>[];
+      final currentUserId = _authService.currentUserId;
+
       for (var loc in locations) {
         final userId = loc['user_id'] as String?;
+        // Skip current user because we have a specialized 'You' marker
+        if (userId == null || userId == currentUserId) continue;
+
         final lat = (loc['lat'] as num?)?.toDouble();
         final lng = (loc['lng'] as num?)?.toDouble();
-        if (lat != null && lng != null && userId != null) {
+        if (lat != null && lng != null) {
           final member = _groupMembers.firstWhere(
             (m) => m['user_id'] == userId,
             orElse: () => <String, dynamic>{},
           );
           final displayName = member['display_name'] as String? ?? 'User';
+          final profileImage = member['profile_image'] as String?;
           final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
 
           newMarkers.add(
             Marker(
               point: LatLng(lat, lng),
-              width: 140,
+              width: 180,
               height: 70,
               alignment: Alignment.topCenter,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         CircleAvatar(
                           radius: 10,
-                          backgroundColor: Colors.blue.shade100,
-                          child: Text(
+                          backgroundColor: Colors.red.shade100,
+                          backgroundImage: profileImage != null ? NetworkImage(profileImage) : null,
+                          child: profileImage == null ? Text(
                             initial,
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
-                          ),
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red),
+                          ) : null,
                         ),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             displayName,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -131,7 +145,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   const Icon(
                     Icons.location_pin,
-                    color: Colors.blue,
+                    color: Colors.red,
                     size: 36,
                   ),
                 ],
@@ -280,18 +294,24 @@ class _MapScreenState extends State<MapScreen> {
                       _currentPosition!.latitude,
                       _currentPosition!.longitude,
                     ),
-                    width: 140,
+                    width: 180,
                     height: 70,
                     alignment: Alignment.topCenter,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -299,7 +319,8 @@ class _MapScreenState extends State<MapScreen> {
                               CircleAvatar(
                                 radius: 10,
                                 backgroundColor: Colors.red.shade100,
-                                child: const Icon(Icons.person, size: 12, color: Colors.red),
+                                backgroundImage: _authService.currentUserProfileImage != null ? NetworkImage(_authService.currentUserProfileImage!) : null,
+                                child: _authService.currentUserProfileImage == null ? const Icon(Icons.person, size: 12, color: Colors.red) : null,
                               ),
                               const SizedBox(width: 6),
                               const Text(
@@ -341,7 +362,7 @@ class _MapScreenState extends State<MapScreen> {
                   data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                    leading: const Icon(Icons.group, color: Colors.blue, size: 24),
+                    leading: const Icon(Icons.group, color: const Color(0xFF0050A4), size: 24),
                     title: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -383,8 +404,16 @@ class _MapScreenState extends State<MapScreen> {
                                 lastLocation['lat'] != null &&
                                 lastLocation['lng'] != null;
 
-                            return ListTile(
-                              leading: const Icon(Icons.person, color: Colors.grey),
+                             return ListTile(
+                               leading: CircleAvatar(
+                                 radius: 18,
+                                 backgroundImage: member['profile_image'] != null
+                                     ? NetworkImage(member['profile_image'])
+                                     : null,
+                                 child: member['profile_image'] == null
+                                     ? const Icon(Icons.person, color: Colors.grey)
+                                     : null,
+                               ),
                               title: Text(displayName),
                               subtitle: Text(
                                 hasLocation ? 'Location Available' : 'No Location',
@@ -396,7 +425,7 @@ class _MapScreenState extends State<MapScreen> {
                               trailing: IconButton(
                                 icon: Icon(
                                   Icons.my_location,
-                                  color: hasLocation ? Colors.blue : Colors.grey.shade300,
+                                  color: hasLocation ? const Color(0xFF0050A4) : Colors.grey.shade300,
                                 ),
                                 onPressed: hasLocation
                                     ? () {

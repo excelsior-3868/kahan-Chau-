@@ -114,6 +114,7 @@ class GroupService {
           'email': user['email'] ?? '',
           'is_sharing': user['is_sharing'] ?? false,
           'last_location': user['last_location'],
+          'profile_image': user['profile_image'],
         });
       }
 
