@@ -17,7 +17,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  String _generatedOtp = ""; // Store locally generated OTP
   bool _isLoading = false;
   bool _isSignUp = false; // Toggle between Sign In / Sign Up
   bool _isBiometricSupported = false;
@@ -103,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final error = await authService.signUp(
         email: email,
         password: password,
+        username: username,
         displayName: name,
       );
 
@@ -475,22 +475,27 @@ class _LoginScreenState extends State<LoginScreen> {
                   // App Icon
                   Center(
                     child: Container(
+                      height: 85,
+                      width: 85,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
                         boxShadow: const [
                           BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 10,
+                            color: Colors.black26,
+                            blurRadius: 15,
+                            offset: Offset(0, 4),
                           ),
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset(
-                          'assets/app_icon.png',
-                          height: 70,
-                          width: 70,
-                          fit: BoxFit.cover,
+                        borderRadius: BorderRadius.circular(24),
+                        child: Transform.scale(
+                          scale: 1.25, // Zoom in slightly to hide the source image borders
+                          child: Image.asset(
+                            'assets/app_icon.png',
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                     ),

@@ -84,6 +84,7 @@ class AuthService {
   Future<String?> signUp({
     required String email,
     required String password,
+    required String username,
     String? displayName,
   }) async {
     try {
@@ -91,11 +92,24 @@ class AuthService {
         email: email,
         password: password,
         data: {
+          'username': username.toLowerCase().trim(),
           if (displayName != null) 'display_name': displayName,
         },
       );
 
       if (response.user != null) {
+        // Since we may not be authenticated yet (email confirm), we rely on 
+        // a database trigger to sync metadata to public.users table.
+        // If we are authenticated (auto-confirm is on), we try an explicit update.
+        if (_client.auth.currentUser != null) {
+          try {
+            await _client.from('users').update({
+              'username': username.toLowerCase().trim(),
+            }).eq('id', response.user!.id);
+          } catch (_) {
+            // Ignore error here, since trigger might be doing it
+          }
+        }
         return null; // success, no error
       }
       return 'Sign-up failed. Please try again.';
@@ -216,12 +230,14 @@ class AuthService {
 
   /// Resolve email from username via secure RPC
   Future<String?> getEmailByUsername(String username) async {
+    final cleanUsername = username.toLowerCase().trim();
     try {
       final response = await _client.rpc('get_email_by_username', params: {
-        'search_username': username.toLowerCase().trim(),
+        'search_username': cleanUsername,
       });
       return response as String?;
     } catch (e) {
+      print('RPC get_email_by_username error ($cleanUsername): $e');
       return null;
     }
   }
