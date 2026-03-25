@@ -26,9 +26,9 @@ class MyApp extends StatelessWidget {
       title: 'कहाँ छौ ??',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFE53935)),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.blue,
+          backgroundColor: Color(0xFFE53935),
           foregroundColor: Colors.white,
         ),
         useMaterial3: true,

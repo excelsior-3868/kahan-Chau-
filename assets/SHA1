@@ -1,0 +1,5 @@
+SHA1: 15:48:CC:A0:CC:FD:2C:61:7E:09:98:4B:4C:DE:39:A6:39:A1:A2:DD
+
+
+
+ & "C:\Program Files\Java\jdk-25\bin\keytool.exe" -list -v -keystore "C:\Users\subin\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android

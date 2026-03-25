@@ -21,6 +21,16 @@ class LocationService {
     }
 
     if (isSharing) {
+      // 1. Immediately update server with current location
+      try {
+        final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+        await _updateLocation(position);
+      } catch (e) {
+        print('Initial Location Update Error: $e');
+      }
+      
+      // 2. Then start the stream to track movement
       _startTracking();
     } else {
       _stopTracking();
@@ -63,7 +73,7 @@ class LocationService {
     if (userId == null) return;
 
     try {
-      // Also update the user's last known location
+      // 1. Update the user's master last_location
       await _client.from('users').update({
         'last_location': {
           'lat': position.latitude,
@@ -71,6 +81,28 @@ class LocationService {
         },
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', userId);
+
+      // 2. Update the 'locations' table for every group the user is in
+      // This is what the MapScreen listens to for real-time member updates
+      final groupService = Supabase.instance.client.from('group_members');
+      final groupsResponse = await groupService.select('group_id').eq('user_id', userId);
+      
+      final List<dynamic> groups = groupsResponse as List<dynamic>;
+      if (groups.isNotEmpty) {
+        final List<Map<String, dynamic>> upserts = groups.map((g) {
+          final groupId = g['group_id'] as String;
+          return {
+            'user_id': userId,
+            'group_id': groupId,
+            'lat': position.latitude,
+            'lng': position.longitude,
+            'status': 'live',
+            'timestamp': DateTime.now().toIso8601String(),
+          };
+        }).toList();
+
+        await _client.from('locations').upsert(upserts);
+      }
     } catch (e) {
       print('Location Update Error: $e');
     }

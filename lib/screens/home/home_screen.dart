@@ -69,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'Enable Biometrics',
               style: TextStyle(
-                  color: Color(0xFF0056A4), fontWeight: FontWeight.bold),
+                  color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
           content: Column(
@@ -79,7 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               const Text(
                   'Please verify your password to securely save it for biometric login.',
-                  textAlign: TextAlign.center),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black87)),
               const SizedBox(height: 16),
               TextField(
                 controller: passwordController,
@@ -106,8 +107,9 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context),
               child:
-                  const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
             ),
+            const SizedBox(width: 8),
             ElevatedButton(
               onPressed: isSavingLocal
                   ? null
@@ -143,7 +145,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                     },
               style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0056A4)),
+                backgroundColor: const Color(0xFF0056A4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
               child: isSavingLocal
                   ? const SizedBox(
                       width: 16,
@@ -182,6 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isSharingLocation = isSharing;
       });
+      // Start tracking if it was already enabled on the server
+      if (isSharing) {
+        _locationService.setSharingStatus(true);
+      }
     }
   }
 
@@ -195,16 +204,35 @@ class _HomeScreenState extends State<HomeScreen> {
     return showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Create New Group'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Group Name'),
+        title: const Center(
+          child: Text(
+            'Create New Group',
+            style: TextStyle(
+                color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
         ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Divider(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
           ),
+          const SizedBox(width: 8),
           ElevatedButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
@@ -220,9 +248,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               }
             },
-            child: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0056A4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Create', style: TextStyle(color: Colors.white)),
           ),
         ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -232,17 +266,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Join Group'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: '6-digit Invite Code'),
-          maxLength: 6,
+        title: const Center(
+          child: Text(
+            'Join Group',
+            style: TextStyle(
+                color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
         ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Divider(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: '6-digit Invite Code',
+                border: OutlineInputBorder(),
+              ),
+              maxLength: 6,
+              keyboardType: TextInputType.text,
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
           ),
+          const SizedBox(width: 8),
           ElevatedButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
@@ -265,9 +318,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               }
             },
-            child: const Text('Join'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0056A4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Join', style: TextStyle(color: Colors.white)),
           ),
         ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -384,6 +443,153 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _showChangePasswordDialog() async {
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isSaving = false;
+    bool obscureOld = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          title: const Center(
+            child: Text(
+              'Change Password',
+              style: TextStyle(
+                  color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+          content: Container(
+            width: MediaQuery.of(context).size.width,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: oldPasswordController,
+                    obscureText: obscureOld,
+                    decoration: InputDecoration(
+                      labelText: 'Old Password',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureOld = !obscureOld),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: newPasswordController,
+                    obscureText: obscureNew,
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.lock_reset),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: confirmPasswordController,
+                    obscureText: obscureConfirm,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.lock_clock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+            ),
+            ElevatedButton(
+              onPressed: isSaving ? null : () async {
+                final oldPwd = oldPasswordController.text;
+                final newPwd = newPasswordController.text;
+                final confirmPwd = confirmPasswordController.text;
+
+                if (oldPwd.isEmpty || newPwd.isEmpty || confirmPwd.isEmpty) {
+                  _showStyledDialog('Error', 'Please fill in all fields.');
+                  return;
+                }
+                if (newPwd.length < 6) {
+                  _showStyledDialog('Error', 'New password must be at least 6 characters.');
+                  return;
+                }
+                if (newPwd != confirmPwd) {
+                  _showStyledDialog('Error', 'Passwords do not match.');
+                  return;
+                }
+
+                setStateDialog(() => isSaving = true);
+                
+                final email = AuthService().currentUserEmail;
+                if (email == null) {
+                  setStateDialog(() => isSaving = false);
+                  return;
+                }
+
+                final reAuthError = await AuthService().signIn(email: email, password: oldPwd);
+                if (reAuthError != null) {
+                  if (mounted) {
+                    setStateDialog(() => isSaving = false);
+                    _showStyledDialog('Error', 'Incorrect old password.');
+                  }
+                  return;
+                }
+
+                final updateError = await AuthService().updatePassword(newPwd);
+                
+                if (mounted) {
+                  setStateDialog(() => isSaving = false);
+                  if (updateError == null) {
+                    if (_isBiometricEnabled) {
+                      await BiometricService().saveCredentials(email, newPwd);
+                    }
+                    Navigator.pop(context);
+                    _showStyledDialog('Success', 'Password updated successfully!');
+                  } else {
+                    _showStyledDialog('Error', updateError);
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0056A4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: isSaving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Update', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showEditDisplayNameDialog() async {
     final controller = TextEditingController(text: _authService.currentUserName ?? '');
     bool isSaving = false;
@@ -392,20 +598,36 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
-          title: const Text('Edit Display Name'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'Enter new name',
+          title: const Center(
+            child: Text(
+              'Edit Display Name',
+              style: TextStyle(
+                  color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Divider(),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Enter new name',
+                  border: OutlineInputBorder(),
+                ),
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
             ),
+            const SizedBox(width: 8),
             ElevatedButton(
               onPressed: isSaving ? null : () async {
                 final newName = controller.text.trim();
@@ -425,15 +647,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 }
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0056A4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
               child: isSaving
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Save'),
+                  : const Text('Save', style: TextStyle(color: Colors.white)),
             ),
           ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );
@@ -476,6 +704,13 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: const Icon(Icons.email),
           title: const Text('Email'),
           subtitle: Text(_authService.currentUserEmail ?? 'Unknown'),
+        ),
+        ListTile(
+          leading: const Icon(Icons.lock_outline),
+          title: const Text('Change Password'),
+          subtitle: const Text('Update your account security.'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _showChangePasswordDialog,
         ),
         const Divider(),
         ListTile(
@@ -611,7 +846,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showStyledDialog(String title, String message,
-      {Color titleColor = const Color(0xFF0056A4), double titleSize = 20}) {
+      {Color titleColor = Colors.black, double titleSize = 18}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -629,13 +864,20 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Divider(),
             const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center),
+            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black87)),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Ok', style: TextStyle(color: Color(0xFF0056A4))),
+          Center(
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0056A4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+              ),
+              child: const Text('Ok', style: TextStyle(color: Colors.white)),
+            ),
           ),
         ],
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -644,7 +886,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _showConfirmDialog(String title, String message,
-      {Color titleColor = const Color(0xFF0056A4), double titleSize = 20}) async {
+      {Color titleColor = Colors.black, double titleSize = 18}) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -662,18 +904,23 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 const Divider(),
                 const SizedBox(height: 16),
-                Text(message, textAlign: TextAlign.center),
+                Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black87)),
               ],
             ),
+            actionsAlignment: MainAxisAlignment.center,
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
               ),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0056A4)),
+                  backgroundColor: const Color(0xFF0056A4),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
                 child: const Text('Confirm', style: TextStyle(color: Colors.white)),
               ),
             ],

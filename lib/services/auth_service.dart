@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:math';
@@ -14,9 +15,76 @@ class AuthService {
   String? get currentUserId => _client.auth.currentUser?.id;
   String? get currentUserEmail => _client.auth.currentUser?.email;
   String? get currentUserName =>
-      _client.auth.currentUser?.userMetadata?['display_name'] as String?;
+      _client.auth.currentUser?.userMetadata?['display_name'] as String? ??
+      _client.auth.currentUser?.userMetadata?['full_name'] as String?;
 
   bool get isAuthenticated => _client.auth.currentSession != null;
+
+  /// The Web Client ID from Google Cloud Console (required for Android ID Tokens)
+  static const String webClientId = '919498628933-jifmst36e9b760cinn6734pmn0jshd63.apps.googleusercontent.com';
+
+  /// Sign in with Google Web/Android
+  Future<String?> signInWithGoogle() async {
+    try {
+      final googleSignIn = GoogleSignIn(
+        serverClientId: webClientId != 'REPLACE_WITH_YOUR_WEB_CLIENT_ID_FROM_GOOGLE_CONSOLE' ? webClientId : null,
+      );
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return 'Sign-In canceled';
+
+      final googleAuth = await googleUser.authentication;
+      final accessToken = googleAuth.accessToken;
+      final idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        return 'Google Sign-In failed to retrieve ID Token. Please check your Google Cloud Console configuration.';
+      }
+
+      final response = await _client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+
+      if (response.user != null) {
+        final user = response.user!;
+        final metadata = user.userMetadata ?? {};
+        final displayName = metadata['full_name'] as String? ?? metadata['display_name'] as String? ?? 'User';
+        
+        try {
+          final profile = await _client.from('users').select('id').eq('id', user.id).maybeSingle();
+          
+          if (profile == null) {
+            String baseUsername = (metadata['full_name'] as String? ?? user.email?.split('@')[0] ?? 'user').replaceAll(' ', '_').toLowerCase();
+            final isTaken = !(await checkUsernameAvailable(baseUsername));
+            if (isTaken) {
+              baseUsername = '$baseUsername${Random().nextInt(9999)}';
+            }
+
+            await _client.from('users').upsert({
+              'id': user.id,
+              'email': user.email,
+              'display_name': displayName,
+              'username': baseUsername,
+              'profile_image': user.userMetadata?['avatar_url'],
+              'updated_at': DateTime.now().toIso8601String(),
+            });
+          }
+        } catch (e) {
+          print('Sync Google profile error: $e');
+        }
+      }
+
+      return null; // success
+    } on AuthException catch (e) {
+      return e.message;
+    } catch (e) {
+      if (e.toString().contains('sign_in_canceled')) {
+        return 'Sign-In canceled';
+      }
+      return 'Unexpected error: $e';
+    }
+  }
 
   /// Generate a random 6-digit OTP
   String generateOtp() {

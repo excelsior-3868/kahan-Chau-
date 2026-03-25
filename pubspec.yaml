@@ -43,6 +43,7 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   shared_preferences: ^2.5.4
   http: ^1.6.0
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -70,13 +71,16 @@ flutter:
 
   assets:
     - assets/app_icon.png
+    - assets/app_icon-removebg-preview.png
 
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/app_icon.png"
+  image_path: "assets/app_icon-removebg-preview.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/app_icon-removebg-preview.png"
 flutter_native_splash:
-  color: "#2196F3" # Blue color to match the AppBar
-  image: "assets/app_icon.png"
+  color: "#FFFFFF"
+  image: "assets/app_icon-removebg-preview.png"
   android: true
   ios: true
