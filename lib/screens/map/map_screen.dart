@@ -35,7 +35,7 @@ class _MapScreenState extends State<MapScreen> {
   
   final Map<String, String> _layerUrls = {
     'Street': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'Satellite': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    'Satellite': 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
     'Terrain': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
   };
 
@@ -244,7 +244,14 @@ class _MapScreenState extends State<MapScreen> {
 
   void _moveToPosition(double lat, double lng) {
     if (_mapReady) {
-      _mapController.move(LatLng(lat, lng), 15.0);
+      _mapController.move(LatLng(lat, lng), 17.0);
+    } else {
+      // Fallback for when map is not ready yet
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_mapReady) {
+          _mapController.move(LatLng(lat, lng), 17.0);
+        }
+      });
     }
   }
 

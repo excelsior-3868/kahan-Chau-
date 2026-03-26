@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'auth_service.dart';
 
 class LocationService {
@@ -21,7 +22,13 @@ class LocationService {
     }
 
     if (isSharing) {
-      // 1. Immediately update server with current location
+      // 1. Start background service
+      final service = FlutterBackgroundService();
+      if (!(await service.isRunning())) {
+        await service.startService();
+      }
+
+      // 2. Immediately update server with current location
       try {
         final position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
@@ -30,10 +37,12 @@ class LocationService {
         print('Initial Location Update Error: $e');
       }
       
-      // 2. Then start the stream to track movement
+      // 3. Then start the stream to track movement (foreground only)
       _startTracking();
     } else {
       _stopTracking();
+      // Stop background service
+      FlutterBackgroundService().invoke('stopService');
     }
   }
 

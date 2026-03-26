@@ -4,8 +4,12 @@ import 'core/constants/supabase_constants.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 
+import 'services/background_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await BackgroundServiceInstance.initializeService();
 
   await Supabase.initialize(
     url: SupabaseConstants.supabaseUrl,

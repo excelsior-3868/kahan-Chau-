@@ -64,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Divider(),
             SizedBox(height: 16),
             Text(
-              'To share your location with your groups, please enable location sharing in settings.',
+              'To keep your family updated even when the app is closed, please enable location sharing and select "Always Allow" in your system settings.',
               textAlign: TextAlign.center,
             ),
           ],
@@ -131,16 +131,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadGroups() async {
     setState(() => _isLoadingGroups = true);
-    final groups = await _groupService.getUserGroups();
-    if (mounted) {
-      setState(() {
-        _groups = groups;
-        _isLoadingGroups = false;
-        // Auto-select first group if none selected
-        if (_selectedGroup == null && groups.isNotEmpty) {
-          _selectedGroup = groups.first;
-        }
-      });
+    try {
+      final groups = await _groupService.getUserGroups();
+      if (mounted) {
+        setState(() {
+          _groups = groups;
+          // Auto-select first group if none selected
+          if (_selectedGroup == null && groups.isNotEmpty) {
+            _selectedGroup = groups.first;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading groups: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingGroups = false);
+      }
     }
   }
 
@@ -376,15 +383,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context) => GroupDetailScreen(group: group),
               );
 
+              // Always refresh groups to reflect any changes made (name, photo)
+              await _loadGroups();
+
               if (locationTarget != null && locationTarget is Map<String, dynamic>) {
                 setState(() {
-                  _selectedGroup = group;
+                  // Re-find the group in the refreshed list to ensure it has latest data
+                  _selectedGroup = _groups.firstWhere((g) => g.id == group.id, orElse: () => group);
                   _focusLocation = locationTarget;
                   _selectedIndex = 0; // Switch to map view
                 });
                 if (mounted) {
                   _showStyledDialog('Locating User', 'Locating ${locationTarget['name']}...');
                 }
+              } else if (_selectedGroup?.id == group.id) {
+                // If the selected group was the one edited, refresh it too
+                setState(() {
+                  _selectedGroup = _groups.firstWhere((g) => g.id == group.id, orElse: () => group);
+                });
               }
             },
           );

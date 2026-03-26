@@ -4,6 +4,7 @@ import 'dart:io';
 import '../../models/group_model.dart';
 import '../../services/group_service.dart';
 import '../../services/auth_service.dart';
+import '../../core/constants/supabase_constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class GroupDetailScreen extends StatefulWidget {
@@ -103,14 +104,19 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       final file = File(image.path);
       final fileExt = image.path.split('.').last;
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final path = 'group_avatars/${_currentGroup.id}/$fileName';
+      
+      // Simplify path - remove subfolders to avoid potential issues
+      final path = '${_currentGroup.id}_$fileName';
 
+      // Use standard bucket name from constants
+      const bucketName = SupabaseConstants.avatarsBucket;
+      
       await Supabase.instance.client.storage
-          .from('avatars')
+          .from(bucketName)
           .upload(path, file);
 
       final imageUrl = Supabase.instance.client.storage
-          .from('avatars')
+          .from(bucketName)
           .getPublicUrl(path);
 
       final success = await _groupService.updateGroupAvatar(_currentGroup.id, imageUrl);
@@ -129,13 +135,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         );
       }
     } catch (e) {
+      debugPrint('Final upload error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error uploading image: $e')),
+        SnackBar(content: Text('Upload failed: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
     }
-  }
+}
 
   Future<void> _removeMember(String userId, String name) async {
     final confirm = await showDialog<bool>(
