@@ -30,6 +30,14 @@ class _MapScreenState extends State<MapScreen> {
   StreamSubscription? _locationSubscription;
   final List<Marker> _markers = [];
   List<Map<String, dynamic>> _groupMembers = [];
+  
+  String _currentLayer = 'Satellite';
+  
+  final Map<String, String> _layerUrls = {
+    'Street': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'Satellite': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    'Terrain': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+  };
 
   @override
   void initState() {
@@ -229,6 +237,11 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Future<void> _locateMe() async {
+    setState(() => _isLoadingLocation = true);
+    await _determinePosition();
+  }
+
   void _moveToPosition(double lat, double lng) {
     if (_mapReady) {
       _mapController.move(LatLng(lat, lng), 15.0);
@@ -282,8 +295,8 @@ class _MapScreenState extends State<MapScreen> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.family_locator',
+              urlTemplate: _layerUrls[_currentLayer]!,
+              userAgentPackageName: 'com.subin.theinner_circle',
             ),
             // Current user location marker
             if (_currentPosition != null)
@@ -362,7 +375,12 @@ class _MapScreenState extends State<MapScreen> {
                   data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                    leading: const Icon(Icons.group, color: const Color(0xFF0050A4), size: 24),
+                    leading: widget.selectedGroup?.avatarUrl != null
+                        ? CircleAvatar(
+                            radius: 12,
+                            backgroundImage: NetworkImage(widget.selectedGroup!.avatarUrl!),
+                          )
+                        : const Icon(Icons.group, color: Color(0xFF0050A4), size: 24),
                     title: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -455,6 +473,53 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
               ),
+            ),
+          ),
+        ),
+        // Layer Selection Button
+        Positioned(
+          bottom: 100,
+          right: 16,
+          child: PopupMenuButton<String>(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                  )
+                ],
+              ),
+              child: const Icon(Icons.layers, color: Color(0xFF0050A4), size: 28),
+            ),
+            onSelected: (String layer) {
+              setState(() => _currentLayer = layer);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'Street', child: Text('Street Map')),
+              const PopupMenuItem(value: 'Satellite', child: Text('Satellite View')),
+              const PopupMenuItem(value: 'Terrain', child: Text('Terrain View')),
+            ],
+          ),
+        ),
+        // Locate Me Button
+        Positioned(
+          bottom: 24,
+          right: 16,
+          child: FloatingActionButton(
+            onPressed: _locateMe,
+            backgroundColor: Colors.white,
+            mini: false,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.my_location,
+              color: Color(0xFF0050A4),
+              size: 28,
             ),
           ),
         ),

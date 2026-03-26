@@ -6,6 +6,8 @@ create table public.users (
   id uuid references auth.users on delete cascade not null primary key,
   display_name text,
   email text,
+  username text,
+  profile_image text,
   is_sharing boolean default false,
   last_location jsonb,
   updated_at timestamptz default now()
@@ -17,6 +19,7 @@ create table public.groups (
   name text not null,
   owner_id uuid references public.users on delete cascade not null,
   invite_code text unique default substr(md5(random()::text), 1, 6),
+  avatar_url text,
   created_at timestamptz default now()
 );
 
@@ -87,6 +90,9 @@ create policy "Users can view their own or member groups" on public.groups
 create policy "Users can create groups" on public.groups
   for insert with check (owner_id = auth.uid());
 
+create policy "Owners can update their groups" on public.groups
+  for update using (owner_id = auth.uid());
+
 -- GROUP MEMBERS
 create policy "Members can view group members" on public.group_members
   for select using (
@@ -96,6 +102,16 @@ create policy "Members can view group members" on public.group_members
 
 create policy "Users can join groups" on public.group_members
   for insert with check (user_id = auth.uid());
+
+create policy "Users can leave groups" on public.group_members
+  for delete using (user_id = auth.uid());
+
+create policy "Owners can remove members" on public.group_members
+  for delete using (
+    group_id in (
+      select id from public.groups where owner_id = auth.uid()
+    )
+  );
 
 -- LOCATIONS
 create policy "Members can view locations in their groups" on public.locations

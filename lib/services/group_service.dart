@@ -124,4 +124,57 @@ class GroupService {
       return [];
     }
   }
+
+  Future<bool> updateGroupName(String groupId, String name) async {
+    try {
+      await _client.from('groups').update({'name': name}).eq('id', groupId);
+      return true;
+    } catch (e) {
+      print('Update Group Name Error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> updateGroupAvatar(String groupId, String avatarUrl) async {
+    try {
+      await _client
+          .from('groups')
+          .update({'avatar_url': avatarUrl}).eq('id', groupId);
+      return true;
+    } catch (e) {
+      print('Update Group Avatar Error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> removeMember(String groupId, String userId) async {
+    try {
+      await _client
+          .from('group_members')
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', userId);
+      return true;
+    } catch (e) {
+      print('Remove Member Error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> leaveGroup(String groupId) async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return false;
+
+    try {
+      await _client
+          .from('group_members')
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', userId);
+      return true;
+    } catch (e) {
+      print('Leave Group Error: $e');
+      return false;
+    }
+  }
 }

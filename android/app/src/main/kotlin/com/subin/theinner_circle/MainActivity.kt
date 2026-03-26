@@ -1,4 +1,4 @@
-package com.example.family_locator
+package com.subin.theinner_circle
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
